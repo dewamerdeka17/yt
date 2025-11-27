@@ -1,7 +1,7 @@
 {
   "name": "youtube-auto-clipper",
   "version": "1.0.0",
-  "description": "Auto clip important moments from YouTube videos",
+  "description": "AI-powered YouTube auto clipping with Groq integration",
   "main": "api/analyze.js",
   "scripts": {
     "dev": "vercel dev",
