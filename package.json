@@ -1,0 +1,19 @@
+{
+  "name": "youtube-auto-clipper",
+  "version": "1.0.0",
+  "description": "Auto clip important moments from YouTube videos",
+  "main": "api/analyze.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'No build step required'"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "vercel": "^28.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

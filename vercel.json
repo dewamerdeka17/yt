@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "functions": {
+    "api/analyze.js": {
+      "maxDuration": 60
+    }
+  },
+  "routes": [
+    {
+      "src": "/",
+      "dest": "/public/index.html"
+    },
+    {
+      "src": "/api/analyze",
+      "dest": "/api/analyze.js",
+      "methods": ["POST"]
+    }
+  ]
+}
