@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTube Auto Clipper - Vercel</title>
+    <title>YouTube AI Clipper - Powered by Groq</title>
     <style>
         * {
             margin: 0;
@@ -140,8 +140,25 @@
 
         .video-meta {
             display: flex;
-            gap: 20px;
+            gap: 15px;
+            flex-wrap: wrap;
             color: #718096;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+
+        .video-meta-item {
+            background: #edf2f7;
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+
+        .analysis-info {
+            background: #e6fffa;
+            border: 1px solid #81e6d9;
+            border-radius: 6px;
+            padding: 10px;
+            margin-top: 10px;
             font-size: 0.9em;
         }
 
@@ -188,15 +205,33 @@
             font-weight: 600;
         }
 
-        .clip-text {
+        .clip-title {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+
+        .clip-description {
             color: #4a5568;
             line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .clip-reason {
+            background: #f7fafc;
+            padding: 8px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            color: #718096;
             margin-bottom: 15px;
+            border-left: 3px solid #cbd5e0;
         }
 
         .clip-actions {
             display: flex;
             gap: 10px;
+            flex-wrap: wrap;
         }
 
         .watch-btn, .embed-btn {
@@ -249,13 +284,22 @@
             border: 2px solid #e9ecef;
         }
 
-        .demo-note {
-            background: #e6fffa;
-            border: 1px solid #81e6d9;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
-            color: #234e52;
+        .ai-badge {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        .rule-badge {
+            background: linear-gradient(135deg, #4299e1, #3182ce);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
         }
 
         @media (max-width: 768px) {
@@ -276,40 +320,39 @@
                 gap: 10px;
                 align-items: flex-start;
             }
+            
+            .video-meta {
+                flex-direction: column;
+                gap: 8px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎬 YouTube Auto Clipper</h1>
-            <p>Otomatis deteksi & buat klip dari konten penting dalam video YouTube</p>
-            <p><small>Deployed on Vercel</small></p>
+            <h1>🎬 YouTube AI Clipper</h1>
+            <p>Powered by Groq AI - Automatically detect and create clips from important moments</p>
         </div>
 
         <div class="main-content">
-            <div class="demo-note">
-                <strong>🚀 Demo Version:</strong> Saat ini menggunakan simulated analysis. Untuk versi production dengan analisis AI real, perlu setup server terpisah.
-            </div>
-
             <div class="input-section">
                 <div class="url-input">
                     <input type="text" id="youtubeUrl" placeholder="Masukkan URL YouTube (contoh: https://www.youtube.com/watch?v=...)" />
-                    <button id="analyzeBtn" class="analyze-btn">Analisis Video</button>
+                    <button id="analyzeBtn" class="analyze-btn">Analisis dengan AI</button>
                 </div>
                 <div id="errorMessage" class="error-message"></div>
             </div>
 
             <div id="loading" class="loading" style="display: none;">
                 <div class="spinner"></div>
-                <p>Sedang menganalisis video dan mencari konten penting...</p>
+                <p>AI sedang menganalisis video dan mencari momen penting...</p>
             </div>
 
             <div id="videoInfo" class="video-info">
                 <div class="video-title" id="videoTitle"></div>
-                <div class="video-meta">
-                    <span id="videoSegmentsCount"></span>
-                </div>
+                <div class="video-meta" id="videoMeta"></div>
+                <div class="analysis-info" id="analysisInfo"></div>
             </div>
 
             <div id="clipsSection" class="clips-section"></div>
@@ -317,12 +360,15 @@
     </div>
 
     <script>
-        class YouTubeClipper {
+        class YouTubeAIClipper {
             constructor() {
                 this.analyzeBtn = document.getElementById('analyzeBtn');
                 this.youtubeUrl = document.getElementById('youtubeUrl');
                 this.loading = document.getElementById('loading');
                 this.videoInfo = document.getElementById('videoInfo');
+                this.videoTitle = document.getElementById('videoTitle');
+                this.videoMeta = document.getElementById('videoMeta');
+                this.analysisInfo = document.getElementById('analysisInfo');
                 this.clipsSection = document.getElementById('clipsSection');
                 this.errorMessage = document.getElementById('errorMessage');
                 
@@ -343,7 +389,15 @@
             showLoading(show) {
                 this.loading.style.display = show ? 'block' : 'none';
                 this.analyzeBtn.disabled = show;
-                this.analyzeBtn.textContent = show ? 'Sedang Menganalisis...' : 'Analisis Video';
+                this.analyzeBtn.textContent = show ? 'AI Sedang Menganalisis...' : 'Analisis dengan AI';
+            }
+
+            formatNumber(num) {
+                return parseInt(num).toLocaleString('id-ID');
+            }
+
+            formatDate(dateString) {
+                return new Date(dateString).toLocaleDateString('id-ID');
             }
 
             async analyzeVideo() {
@@ -378,6 +432,10 @@
                         throw new Error(data.error || 'Terjadi kesalahan');
                     }
 
+                    if (!data.success) {
+                        throw new Error(data.error || 'Analisis gagal');
+                    }
+
                     this.displayResults(data);
                     
                 } catch (error) {
@@ -388,34 +446,58 @@
             }
 
             displayResults(data) {
-                // Update video info
-                document.getElementById('videoTitle').textContent = data.title;
-                document.getElementById('videoSegmentsCount').textContent = `${data.segments.length} klip penting ditemukan`;
-                this.videoInfo.classList.add('show');
+                this.videoTitle.textContent = data.title;
+                
+                this.videoMeta.innerHTML = `
+                    <div class="video-meta-item">⏱ ${data.duration_formatted}</div>
+                    <div class="video-meta-item">📺 ${data.channel}</div>
+                    <div class="video-meta-item">👀 ${this.formatNumber(data.viewCount)} views</div>
+                    <div class="video-meta-item">📅 ${this.formatDate(data.publishedAt)}</div>
+                `;
 
-                // Display clips
+                const analysisType = data.analysis_type === 'ai_groq' ? 'AI Groq' : 'Rule-Based';
+                this.analysisInfo.innerHTML = `
+                    <strong>Analysis Type:</strong> ${analysisType} 
+                    | ${data.segments.length} important segments found
+                    | Analyzed at ${new Date(data.analyzed_at).toLocaleTimeString('id-ID')}
+                `;
+
+                this.videoInfo.classList.add('show');
+                this.displayClips(data.segments, data.video_id, data.analysis_type);
+            }
+
+            displayClips(segments, videoId, analysisType) {
                 this.clipsSection.innerHTML = '';
                 
-                if (data.segments.length === 0) {
+                if (segments.length === 0) {
                     this.clipsSection.innerHTML = `
                         <div class="clip-card">
-                            <div class="clip-text">
-                                Tidak ada konten penting yang terdeteksi. Coba video dengan konten tutorial atau edukasi.
+                            <div class="clip-description">
+                                Tidak ada momen penting yang terdeteksi. Coba video dengan konten edukasi atau tutorial.
                             </div>
                         </div>
                     `;
                     return;
                 }
 
-                data.segments.forEach((segment, index) => {
+                segments.forEach((segment, index) => {
                     const clipCard = document.createElement('div');
                     clipCard.className = 'clip-card';
+                    
+                    const badgeType = analysisType === 'ai_groq' ? 
+                        '<span class="ai-badge">AI POWERED</span>' : 
+                        '<span class="rule-badge">RULE BASED</span>';
+                    
                     clipCard.innerHTML = `
                         <div class="clip-header">
                             <span class="clip-timestamp">${segment.start_formatted} - ${segment.end_formatted}</span>
                             <span class="clip-score">Skor: ${segment.score}/10</span>
                         </div>
-                        <div class="clip-text">${segment.text}</div>
+                        <div class="clip-title">${segment.title}</div>
+                        <div class="clip-description">${segment.description}</div>
+                        <div class="clip-reason">
+                            <strong>Alasan:</strong> ${segment.reason}
+                        </div>
                         <div class="clip-actions">
                             <button class="watch-btn" onclick="window.open('${segment.watch_url}', '_blank')">
                                 🎬 Tonton Klip
@@ -423,6 +505,7 @@
                             <button class="embed-btn" onclick="clipper.showEmbed('${segment.youtube_url}', this)">
                                 📺 Embed Preview
                             </button>
+                            ${badgeType}
                         </div>
                         <div class="embed-preview" id="embed-${index}">
                             <iframe src="${segment.youtube_url}" frameborder="0" 
@@ -449,8 +532,7 @@
             }
         }
 
-        // Initialize the application
-        const clipper = new YouTubeClipper();
+        const clipper = new YouTubeAIClipper();
     </script>
 </body>
 </html>
