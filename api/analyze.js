@@ -10,7 +10,7 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 // Groq API configuration
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama3-8b-8192'; // atau 'mixtral-8x7b-32768', 'llama3-70b-8192'
+const GROQ_MODEL = 'llama3-8b-8192';
 
 module.exports = async (req, res) => {
   // Set CORS headers
@@ -92,35 +92,40 @@ function cleanupCache() {
 }
 
 async function processVideoWithAI(videoId, originalUrl) {
-  const videoInfo = await getYouTubeVideoInfo(videoId);
-  if (!videoInfo) {
-    throw new Error('Could not fetch video information from YouTube API');
+  try {
+    const videoInfo = await getYouTubeVideoInfo(videoId);
+    if (!videoInfo) {
+      throw new Error('Could not fetch video information from YouTube API');
+    }
+
+    const analysisResult = await analyzeContentWithAI({
+      videoId,
+      title: videoInfo.title,
+      description: videoInfo.description,
+      duration: videoInfo.duration,
+      channel: videoInfo.channelTitle
+    });
+
+    return {
+      success: true,
+      video_id: videoId,
+      title: videoInfo.title,
+      description: videoInfo.description,
+      duration: videoInfo.duration,
+      duration_formatted: formatTime(videoInfo.duration),
+      thumbnail: videoInfo.thumbnail,
+      channel: videoInfo.channelTitle,
+      viewCount: videoInfo.viewCount,
+      publishedAt: videoInfo.publishedAt,
+      segments: analysisResult.segments,
+      analysis_type: analysisResult.analysis_type,
+      original_url: originalUrl,
+      analyzed_at: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Process video error:', error);
+    throw error;
   }
-
-  const analysisResult = await analyzeContentWithGroqAI({
-    videoId,
-    title: videoInfo.title,
-    description: videoInfo.description,
-    duration: videoInfo.duration,
-    channel: videoInfo.channelTitle
-  });
-
-  return {
-    success: true,
-    video_id: videoId,
-    title: videoInfo.title,
-    description: videoInfo.description,
-    duration: videoInfo.duration,
-    duration_formatted: formatTime(videoInfo.duration),
-    thumbnail: videoInfo.thumbnail,
-    channel: videoInfo.channelTitle,
-    viewCount: videoInfo.viewCount,
-    publishedAt: videoInfo.publishedAt,
-    segments: analysisResult.segments,
-    analysis_type: analysisResult.analysis_type,
-    original_url: originalUrl,
-    analyzed_at: new Date().toISOString()
-  };
 }
 
 async function getYouTubeVideoInfo(videoId) {
@@ -172,115 +177,118 @@ function parseISODuration(duration) {
   return hours * 3600 + minutes * 60 + seconds;
 }
 
-// AI Analysis dengan Groq API
-async function analyzeContentWithGroqAI(videoData) {
+async function analyzeContentWithAI(videoData) {
   try {
-    if (GROQ_API_KEY) {
+    if (GROQ_API_KEY && GROQ_API_KEY.startsWith('gsk_')) {
+      console.log('Using Groq AI for analysis...');
       return await analyzeWithGroqAPI(videoData);
     } else {
+      console.log('Using rule-based analysis');
       return await analyzeWithRules(videoData);
     }
   } catch (error) {
-    console.error('Groq AI Analysis Error:', error);
+    console.error('AI Analysis Error:', error.message);
+    console.log('Falling back to rule-based analysis');
     return await analyzeWithRules(videoData);
   }
 }
 
 async function analyzeWithGroqAPI(videoData) {
-  const prompt = createAnalysisPrompt(videoData);
-  
-  const response = await fetch(GROQ_API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an AI that analyzes YouTube video content and identifies the most important segments for creating short clips. Always respond with valid JSON format only.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      model: GROQ_MODEL,
-      temperature: 0.3,
-      max_tokens: 2000,
-      stream: false,
-      response_format: { type: 'json_object' }
-    })
-  });
+  const prompt = `
+Analyze this YouTube video and identify 3-5 important segments for short clips.
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Groq API error: ${response.status} - ${errorText}`);
-  }
-
-  const result = await response.json();
-  return parseGroqAIResponse(result, videoData.videoId);
-}
-
-function createAnalysisPrompt(videoData) {
-  return `Analyze this YouTube video content and identify the 3-5 most important segments for creating short clips.
-
-VIDEO INFORMATION:
+VIDEO:
 Title: ${videoData.title}
-Description: ${videoData.description ? videoData.description.substring(0, 500) + '...' : 'No description'}
+Description: ${videoData.description ? videoData.description.substring(0, 300) + '...' : 'No description'}
 Duration: ${videoData.duration} seconds (${formatTime(videoData.duration)})
 Channel: ${videoData.channel}
 
-INSTRUCTIONS:
-1. Identify the most valuable segments for short clips (30-90 seconds each)
-2. Focus on: tutorials, key insights, important announcements, useful tips, conclusions
-3. Provide exact timestamps in seconds
-4. Give each segment a relevance score from 1-10
-5. Explain why each segment is important
+Identify segments that contain:
+- Tutorials and how-to guides
+- Key insights and important points  
+- Useful tips and best practices
+- Summary and conclusions
 
-RESPONSE FORMAT (JSON only):
+Respond with JSON format only:
 {
   "segments": [
     {
       "start": 120,
       "end": 180,
-      "title": "Key Concept Explanation",
-      "description": "Brief description of what happens in this segment",
+      "title": "Segment Title",
+      "description": "Brief description of content",
       "score": 8,
-      "reason": "This segment explains the main concept with clear examples"
+      "reason": "Why this segment is important"
     }
   ]
 }
 
-Analyze the video and respond with JSON:`;
+Ensure each segment is 30-90 seconds and provide exact timestamps in seconds.
+`;
+
+  try {
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an AI that analyzes YouTube video content. Always respond with valid JSON format only. Do not include any other text.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        model: GROQ_MODEL,
+        temperature: 0.3,
+        max_tokens: 2000,
+        stream: false
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Groq API error: ${response.status}`);
+    }
+
+    const result = await response.json();
+    
+    return parseGroqAIResponse(result, videoData.videoId);
+    
+  } catch (error) {
+    console.error('Groq API request failed:', error.message);
+    throw error;
+  }
 }
 
 function parseGroqAIResponse(aiResponse, videoId) {
   try {
-    let segments = [];
-    
-    // Groq API response format
-    if (aiResponse.choices && aiResponse.choices[0] && aiResponse.choices[0].message) {
-      const content = aiResponse.choices[0].message.content;
-      
-      // Parse JSON from the response
-      const parsedContent = JSON.parse(content);
-      
-      if (parsedContent.segments && Array.isArray(parsedContent.segments)) {
-        segments = parsedContent.segments;
-      } else {
-        throw new Error('Invalid segments format in AI response');
-      }
-    } else {
-      throw new Error('Invalid Groq API response format');
+    if (!aiResponse.choices || !aiResponse.choices[0] || !aiResponse.choices[0].message) {
+      throw new Error('Invalid Groq API response structure');
     }
 
-    // Validate and format segments
-    const formattedSegments = segments.map((segment, index) => {
-      // Ensure valid timestamps
-      const start = Math.max(0, segment.start || 0);
-      const end = Math.min(segment.end || (start + 60), start + 120); // Max 2 minutes per segment
+    const content = aiResponse.choices[0].message.content;
+    
+    // Extract JSON from response
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('No JSON found in AI response');
+    }
+
+    const parsedContent = JSON.parse(jsonMatch[0]);
+    
+    if (!parsedContent.segments || !Array.isArray(parsedContent.segments)) {
+      throw new Error('Invalid segments format in AI response');
+    }
+
+    const formattedSegments = parsedContent.segments.map((segment, index) => {
+      const start = Math.max(0, segment.start || (index * 120 + 30));
+      const end = Math.max(start + 30, segment.end || (start + 60));
       
       return {
         start: start,
@@ -297,29 +305,26 @@ function parseGroqAIResponse(aiResponse, videoId) {
     });
 
     return {
-      segments: formattedSegments,
+      segments: formattedSegments.slice(0, 5), // Max 5 segments
       analysis_type: 'ai_groq'
     };
 
   } catch (error) {
-    console.error('Error parsing Groq AI response:', error);
-    console.log('Raw AI response:', aiResponse);
-    throw new Error('Failed to parse AI analysis results: ' + error.message);
+    console.error('Error parsing Groq AI response:', error.message);
+    throw new Error(`AI response parsing failed: ${error.message}`);
   }
 }
 
-// Rule-based fallback analysis
 async function analyzeWithRules(videoData) {
   const segments = [];
   const duration = videoData.duration;
   
-  // Create segments based on video structure
   const segmentCount = Math.min(5, Math.max(3, Math.floor(duration / 120)));
   
   for (let i = 0; i < segmentCount; i++) {
     const segmentSize = duration / segmentCount;
-    const start = Math.floor(i * segmentSize + 30); // Avoid very beginning
-    const end = Math.floor(Math.min(start + 60, (i + 1) * segmentSize - 10)); // 60sec clips
+    const start = Math.floor(i * segmentSize + 30);
+    const end = Math.floor(Math.min(start + 60, (i + 1) * segmentSize - 10));
     
     const segmentTypes = [
       { title: "Introduction & Overview", score: 7 },
@@ -339,7 +344,7 @@ async function analyzeWithRules(videoData) {
       title: segmentType.title,
       description: `Important segment covering ${segmentType.title.toLowerCase()}`,
       score: segmentType.score,
-      reason: "Automatically identified as key content segment based on video structure",
+      reason: "Automatically identified based on video structure analysis",
       youtube_url: `https://youtube.com/embed/${videoData.videoId}?start=${start}&end=${end}`,
       watch_url: `https://www.youtube.com/watch?v=${videoData.videoId}&t=${start}s`
     });
